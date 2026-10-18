@@ -1,0 +1,389 @@
+<div class="designer-page">
+
+  <!-- HEADER -->
+  <div class="page-header">
+    <button mat-icon-button (click)="volver()" matTooltip="Volver a flujos">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <div>
+      <h2>
+        {{ isCollaborationMode ? '🤝 Colaborando en: ' + form.get('nombre')?.value : 'Diseñar Flujo de Trabajo' }}
+      </h2>
+      <p class="page-sub">
+        {{ isCollaborationMode
+           ? 'Modo colaborativo — tus cambios serán visibles para todos en esta sala'
+           : 'Arrastra elementos y configura cada nodo con doble clic' }}
+      </p>
+    </div>
+    <span class="spacer"></span>
+
+    <!-- Botón Compartir: siempre visible para admin. Sin templateId pide guardar primero. -->
+    @if (!isCollaborationMode) {
+      <button mat-stroked-button
+              matTooltip="{{ templateId ? 'Compartir para edición colaborativa' : 'Guarda el flujo primero para compartir' }}"
+              [color]="mostrarPanelCompartir ? 'accent' : ''"
+              (click)="toggleCompartir()"
+              style="margin-right: 8px;">
+        <mat-icon>share</mat-icon> Compartir
+      </button>
+    }
+
+    <button mat-raised-button color="primary" [disabled]="guardando" (click)="guardar()">
+      @if (guardando) {
+        <mat-spinner diameter="18"></mat-spinner>
+      } @else {
+        <ng-container><mat-icon>save</mat-icon> Guardar Flujo</ng-container>
+      }
+    </button>
+  </div>
+
+  <!-- PANEL COMPARTIR -->
+  @if (mostrarPanelCompartir) {
+    <div class="collab-panel-header-section">
+      <div class="collab-panel-inner">
+        <div class="collab-panel-title">
+          <mat-icon>people</mat-icon>
+          <span>Colaboración en tiempo real</span>
+        </div>
+        @if (cargandoLink) {
+          <mat-spinner diameter="20"></mat-spinner>
+        } @else if (linkColaboracion) {
+          <div class="collab-link-row">
+            <span class="collab-url">{{ linkColaboracion.collaborationUrl }}</span>
+            <button mat-icon-button matTooltip="Copiar link" (click)="copiarLink()">
+              <mat-icon>content_copy</mat-icon>
+            </button>
+            <button mat-stroked-button (click)="regenerarLink()">
+              <mat-icon>refresh</mat-icon> Regenerar
+            </button>
+            <button mat-stroked-button color="warn" (click)="revocarLink()">
+              <mat-icon>link_off</mat-icon> Revocar
+            </button>
+            <button mat-icon-button (click)="mostrarPanelCompartir = false">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+          <p class="collab-hint-text">
+            <mat-icon>info</mat-icon>
+            Comparte este link. Quien lo abra podrá diseñar el flujo junto contigo en tiempo real.
+          </p>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- META -->
+  <mat-card class="meta-card">
+    <mat-card-content style="padding: 16px 20px;">
+      <form [formGroup]="form" class="meta-form">
+        <!-- Cuadro 1 (Izquierdo): Nombre del flujo -->
+        <mat-form-field appearance="outline" class="meta-input-field">
+          <mat-label>Nombre del flujo *</mat-label>
+          <mat-icon matPrefix>account_tree</mat-icon>
+          <input matInput formControlName="nombre" placeholder="Ej: Farmacia">
+          @if (form.get('nombre')?.hasError('required') && form.get('nombre')?.touched) {
+            <mat-error>Campo obligatorio</mat-error>
+          }
+        </mat-form-field>
+
+        <!-- Cuadro 2 (Medio): Tipo de solicitud -->
+        <mat-form-field appearance="outline" class="meta-input-field">
+          <mat-label>Tipo de solicitud *</mat-label>
+          <mat-icon matPrefix>label</mat-icon>
+          <input matInput formControlName="tipoSolicitud" placeholder="Ej: FARMACIA">
+          @if (form.get('tipoSolicitud')?.hasError('required') && form.get('tipoSolicitud')?.touched) {
+            <mat-error>Campo obligatorio</mat-error>
+          }
+        </mat-form-field>
+
+        <!-- Cuadro 3 (Derecho): Comando de voz/texto para generar con IA -->
+        <div class="ai-generator-group">
+          <mat-form-field appearance="outline" class="ai-input-field">
+            <mat-label>Instrucción por Voz o Texto</mat-label>
+            <mat-icon matPrefix color="primary">psychology</mat-icon>
+            <input matInput [(ngModel)]="aiPrompt" [ngModelOptions]="{standalone: true}" 
+                   placeholder="Ej: Crear flujo de compra de medicamentos con aprobación..."
+                   (keyup.enter)="generarFlujoIA()" [disabled]="cargandoIA">
+            <button mat-icon-button matSuffix (click)="toggleMicrofonoIA()" 
+                    [color]="escuchandoIA ? 'warn' : ''" 
+                    matTooltip="{{ escuchandoIA ? 'Escuchando... Haz clic para detener' : 'Activar micrófono' }}"
+                    type="button">
+              <mat-icon>{{ escuchandoIA ? 'mic' : 'mic_none' }}</mat-icon>
+            </button>
+          </mat-form-field>
+          <button mat-raised-button color="accent" class="ai-btn-submit"
+                  [disabled]="cargandoIA || !aiPrompt.trim()" (click)="generarFlujoIA()"
+                  type="button">
+            @if (cargandoIA) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <ng-container><mat-icon>auto_awesome</mat-icon> Diseñar con IA</ng-container>
+            }
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- LAYOUT PRINCIPAL -->
+  <div class="designer-layout">
+    <!-- CANVAS -->
+    <mat-card class="modeler-card">
+      <mat-card-header>
+        <mat-card-title><mat-icon>schema</mat-icon> Canvas BPMN</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="canvas-hint">
+          <mat-icon>info</mat-icon>
+          <span>Arrastra elementos desde la paleta izquierda &nbsp;·&nbsp;
+            <strong>Doble clic</strong> en un nodo para configurar sus propiedades
+          </span>
+        </div>
+        @if (modelerListo) {
+          <app-bpmn-modeler #modeler
+            [xmlInicial]="xmlParaCargar"
+            [nodosIniciales]="nodosParaCargar"
+            (elementoDobleClick)="onElementoSeleccionado($event)"
+            (xmlChanged)="onXmlChanged($event)">
+          </app-bpmn-modeler>
+        } @else {
+          <div style="height:540px;display:flex;align-items:center;justify-content:center;">
+            <mat-spinner diameter="48"></mat-spinner>
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <!-- PANEL INFERIOR (AVANZADO) -->
+  @if (nodoSeleccionado) {
+    <mat-card class="advanced-props-panel mt-4">
+      
+      <!-- Encabezado del Panel -->
+      <div class="props-header" [style.background]="getTipoColor(nodoSeleccionado.tipo)">
+        <div class="d-flex align-items-center gap-2">
+          <mat-icon>{{ getTipoIcono(nodoSeleccionado.tipo) }}</mat-icon>
+          <span class="fs-5 fw-bold">Formulario de Configuración de Tarea y Gestión Documental</span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+          <div class="props-id text-white-50">{{ nodoSeleccionado.id }}</div>
+          <button mat-raised-button color="accent"
+                  [disabled]="propForm.invalid || esSoloLectura(nodoSeleccionado.tipo)"
+                  (click)="guardarPropiedades()">
+            <mat-icon>save</mat-icon> Guardar Configuración
+          </button>
+          <button mat-icon-button class="text-white" (click)="cerrarPanel()" matTooltip="Cerrar Panel">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      <mat-card-content class="pt-3">
+        @if (!esSoloLectura(nodoSeleccionado.tipo)) {
+          <form [formGroup]="propForm">
+            <div class="grid-layout">
+              
+              <!-- COLUMNA 1: DATOS DE LA TAREA -->
+              <div>
+                <div class="section-title">
+                  <mat-icon>info</mat-icon> DATOS DE LA TAREA
+                </div>
+                
+                <div class="sub-section">
+                  <div class="sub-title">IDENTIFICACIÓN</div>
+                  <mat-form-field appearance="outline" class="w-100">
+                    <mat-label>Nombre de la tarea</mat-label>
+                    <input matInput formControlName="nombre">
+                  </mat-form-field>
+                </div>
+
+                <div class="sub-section mt-3">
+                  <div class="sub-title">ASIGNACIÓN</div>
+                  <div class="grid-2-cols">
+                    <div>
+                      <mat-form-field appearance="outline" class="w-100">
+                        <mat-label>Departamento responsable</mat-label>
+                        <mat-select formControlName="departamentoId">
+                          <mat-option value="">Sin asignar</mat-option>
+                          @for (dep of departamentos; track dep.id) {
+                            <mat-option [value]="dep.id">{{ dep.nombre }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+                    <div>
+                      <mat-form-field appearance="outline" class="w-100">
+                        <mat-label>Funcionario asignado</mat-label>
+                        <mat-select formControlName="funcionarioId">
+                          <mat-option value="">Cualquiera del área</mat-option>
+                          @for (f of funcionariosFiltrados; track f.id) {
+                            <mat-option [value]="f.id">{{ f.nombre }} {{ f.apellido }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+                  </div>
+                  
+                  <div class="mt-2">
+                    <mat-form-field appearance="outline" class="w-100">
+                      <mat-label>Jerarquía mínima</mat-label>
+                      <mat-select formControlName="rolRequerido">
+                        <mat-option value="">Sin restricción de rol</mat-option>
+                        @for (rol of roles; track rol.id) {
+                          <mat-option [value]="rol.id">{{ rol.label }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                </div>
+
+                <div class="sub-section mt-3">
+                  <div class="sub-title">TIEMPO LÍMITE</div>
+                  <mat-form-field appearance="outline" class="w-100">
+                    <mat-label>Tiempo límite (Fecha y Hora)</mat-label>
+                    <mat-icon matPrefix>event</mat-icon>
+                    <input matInput type="datetime-local" formControlName="fechaLimite">
+                  </mat-form-field>
+                </div>
+              </div>
+
+              <!-- COLUMNA 2: CONFIGURACIÓN DE LA TAREA (ROLES Y PERMISOS) -->
+              <div>
+                <div class="section-title">
+                  <mat-icon>settings</mat-icon> CONFIGURACIÓN DE LA TAREA
+                </div>
+
+                <div class="sub-section">
+                  <div class="sub-title d-flex justify-content-between align-items-center">
+                    <span><mat-icon class="fs-6 me-1" style="width:16px;height:16px;">security</mat-icon> ROLES Y PERMISOS DE DOCUMENTOS</span>
+                  </div>
+                  
+                  <!-- Placeholder Matrix -->
+                  <div class="permissions-matrix mt-2 mb-3">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th class="text-start">Rol/Departamento</th>
+                          <th>PDF</th>
+                          <th>Word</th>
+                          <th>Excel</th>
+                          <th>Imagenes</th>
+                          <th>Audio/Video</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td class="text-start fw-bold">Actual (Nodo)</td>
+                          <td><mat-icon class="text-success fs-6">visibility</mat-icon> Ver</td>
+                          <td><mat-icon class="text-primary fs-6">edit</mat-icon> Editar</td>
+                          <td><mat-icon class="text-success fs-6">visibility</mat-icon> Ver</td>
+                          <td><mat-icon class="text-success fs-6">visibility</mat-icon> Ver</td>
+                          <td><mat-icon class="text-danger fs-6">block</mat-icon> Sin</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div class="text-muted mt-2" style="font-size: 11px;">(La matriz completa de todos los roles se implementará en la fase de backend)</div>
+                  </div>
+                  <div class="row mt-3 mb-2">
+                    <div class="col-12">
+                      <mat-form-field appearance="outline" class="w-100 mb-2">
+                        <mat-label>Permiso por defecto para el Creador</mat-label>
+                        <mat-select formControlName="permisoDefectoCreador">
+                          <mat-option value="EDITAR">Editar</mat-option>
+                          <mat-option value="VER">Ver</mat-option>
+                        </mat-select>
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" class="w-100">
+                        <mat-label>Nivel de visibilidad global</mat-label>
+                        <mat-select formControlName="nivelVisibilidadGlobal">
+                          <mat-option value="PRIVADO">Privado por departamento</mat-option>
+                          <mat-option value="PUBLICO">Público para todos</mat-option>
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="mt-2">
+                      <mat-checkbox formControlName="bloquearAlCompletar" color="primary">Bloquear nodo al completar</mat-checkbox>
+                    </div>
+                    <div>
+                      <mat-checkbox formControlName="habilitarFirmaDigital" color="primary">Habilitar firma digital</mat-checkbox>
+                    </div>
+                    <div>
+                      <mat-checkbox formControlName="formularioDinamicoHabilitado" color="accent">
+                        Habilitar Formulario Dinámico
+                      </mat-checkbox>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- COLUMNA 3: GESTIÓN DOCUMENTAL ADICIONAL -->
+              <div class="col-3">
+                <div class="section-title">
+                  <mat-icon>folder</mat-icon> GESTIÓN DOCUMENTAL ADICIONAL
+                </div>
+                
+                <div class="sub-section">
+                  <div class="grid-2-cols">
+                    <div>
+                      <div class="file-type-card">
+                        <div class="d-flex align-items-center mb-1"><mat-icon class="text-primary me-1">picture_as_pdf</mat-icon> PDF</div>
+                        <mat-slide-toggle formControlName="permitePdf" color="primary"><small class="text-muted">Habilitar</small></mat-slide-toggle>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="file-type-card">
+                        <div class="d-flex align-items-center mb-1"><mat-icon class="text-primary me-1">description</mat-icon> Word</div>
+                        <mat-slide-toggle formControlName="permiteWord" color="primary"><small class="text-muted">Habilitar</small></mat-slide-toggle>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="file-type-card">
+                        <div class="d-flex align-items-center mb-1"><mat-icon class="text-primary me-1">table_chart</mat-icon> Excel</div>
+                        <mat-slide-toggle formControlName="permiteExcel" color="primary"><small class="text-muted">Habilitar</small></mat-slide-toggle>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="file-type-card">
+                        <div class="d-flex align-items-center mb-1"><mat-icon class="text-primary me-1">image</mat-icon> Imágenes</div>
+                        <mat-slide-toggle formControlName="permiteImagenes" color="primary"><small class="text-muted">Habilitar</small></mat-slide-toggle>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="file-type-card">
+                        <div class="d-flex align-items-center mb-1"><mat-icon class="text-secondary me-1">audiotrack</mat-icon> Audio</div>
+                        <mat-slide-toggle formControlName="permiteAudio" color="primary"><small class="text-muted">Habilitar</small></mat-slide-toggle>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="file-type-card">
+                        <div class="d-flex align-items-center mb-1"><mat-icon class="text-secondary me-1">videocam</mat-icon> Video</div>
+                        <mat-slide-toggle formControlName="permiteVideo" color="primary"><small class="text-muted">Habilitar</small></mat-slide-toggle>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="mt-4">
+                    <mat-checkbox formControlName="requiereEvidencia" color="primary">
+                      <strong>Requiere evidencia o adjunto</strong>
+                    </mat-checkbox>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </form>
+        } @else {
+          <div class="alert alert-secondary d-flex align-items-center m-3">
+            <mat-icon class="me-2">lock</mat-icon>
+            Este nodo es de control automático (Inicio/Fin) y no tiene propiedades configurables avanzadas.
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+  }
+
+</div>

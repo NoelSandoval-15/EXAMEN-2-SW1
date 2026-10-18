@@ -1,0 +1,259 @@
+<div class="dform-wrapper">
+
+  <!-- ── Header ── -->
+  <div class="dform-header">
+    <mat-icon class="dform-header-icon">dynamic_form</mat-icon>
+    <div>
+      <div class="dform-title">Formulario Dinámico</div>
+      <div class="dform-subtitle">
+        @if (soloLectura) {
+          Datos registrados en este nodo
+        } @else {
+          Agrega y llena los campos que necesitas para este nodo
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Campos ── -->
+  @if (campos.length === 0) {
+    <div class="dform-empty">
+      <mat-icon>inbox</mat-icon>
+      <p>{{ soloLectura ? 'No se registraron campos.' : 'Aún no hay campos. Haz clic en "+ Agregar campo".' }}</p>
+    </div>
+  }
+
+  <div class="dform-campos">
+    @for (campo of campos; track campo.id; let i = $index) {
+      <div class="dform-campo" [class.solo-lectura]="soloLectura">
+
+        <!-- Cabecera del campo -->
+        <div class="dform-campo-top">
+          <mat-icon class="tipo-icon">{{ getIconoTipo(campo.tipo) }}</mat-icon>
+
+          @if (!soloLectura) {
+            <!-- Etiqueta editable -->
+            <input class="etiqueta-input"
+                   [(ngModel)]="campo.etiqueta"
+                   placeholder="Nombre del campo (ej: Número de expediente)"
+                   maxlength="80" />
+
+            <!-- Tipo -->
+            <select class="tipo-select" [(ngModel)]="campo.tipo" (ngModelChange)="onTipoChange(campo)">
+              @for (opt of tipoOpciones; track opt.valor) {
+                <option [value]="opt.valor">{{ opt.label }}</option>
+              }
+            </select>
+
+            <!-- Requerido -->
+            <label class="requerido-label" [matTooltip]="'Campo obligatorio'">
+              <input type="checkbox" [(ngModel)]="campo.requerido" />
+              <span>Req.</span>
+            </label>
+
+            <!-- Acciones de orden -->
+            <div class="campo-acciones">
+              <button mat-icon-button type="button" (click)="moverArriba(i)"
+                      [disabled]="i === 0" matTooltip="Subir">
+                <mat-icon>arrow_upward</mat-icon>
+              </button>
+              <button mat-icon-button type="button" (click)="moverAbajo(i)"
+                      [disabled]="i === campos.length - 1" matTooltip="Bajar">
+                <mat-icon>arrow_downward</mat-icon>
+              </button>
+              <button mat-icon-button type="button" color="warn"
+                      (click)="eliminarCampo(i)" matTooltip="Eliminar campo">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+          } @else {
+            <!-- Solo lectura: mostrar etiqueta -->
+            <span class="etiqueta-readonly">{{ campo.etiqueta }}</span>
+            @if (campo.requerido) {
+              <span class="badge-req">Requerido</span>
+            }
+          }
+        </div>
+
+        <!-- Opciones de Configuración (Solo diseño para select, checklist, tabla) -->
+        @if (!soloLectura && (campo.tipo === 'SELECT' || campo.tipo === 'CHECKLIST' || campo.tipo === 'TABLA')) {
+          <div class="opciones-config">
+            <label>
+              {{ campo.tipo === 'TABLA' ? 'Columnas de la tabla (separadas por comas)' : 'Opciones del selector (separadas por comas)' }}
+            </label>
+            <input class="valor-input" [(ngModel)]="campo.opciones"
+                   [placeholder]="campo.tipo === 'TABLA' ? 'Ej: Nombre, Edad, Rol' : 'Ej: Opción 1, Opción 2, Opción 3'" />
+          </div>
+        }
+
+        <!-- Input del valor según tipo -->
+        <div class="dform-valor-wrap">
+          @if (campo.tipo === 'TEXTO') {
+            <input class="valor-input"
+                   [(ngModel)]="campo.valor"
+                   [placeholder]="soloLectura ? '' : 'Escribe aquí...'"
+                   [readonly]="soloLectura" />
+          }
+          @if (campo.tipo === 'TEXTO_LARGO') {
+            <textarea class="valor-input" rows="3"
+                   [(ngModel)]="campo.valor"
+                   [placeholder]="soloLectura ? '' : 'Escribe un texto más largo aquí...'"
+                   [readonly]="soloLectura"></textarea>
+          }
+          @if (campo.tipo === 'NUMERO') {
+            <input class="valor-input" type="number"
+                   [(ngModel)]="campo.valor"
+                   [placeholder]="soloLectura ? '' : '0'"
+                   [readonly]="soloLectura" />
+          }
+          @if (campo.tipo === 'FECHA') {
+            <input class="valor-input" type="date"
+                   [(ngModel)]="campo.valor"
+                   [readonly]="soloLectura" />
+          }
+          @if (campo.tipo === 'CHECKBOX') {
+            <label class="valor-checkbox-label">
+              <input type="checkbox"
+                     [(ngModel)]="campo.valor"
+                     [disabled]="soloLectura" />
+              <span>{{ campo.valor ? 'Sí' : 'No' }}</span>
+            </label>
+          }
+          @if (campo.tipo === 'TELEFONO') {
+            <input class="valor-input" type="tel"
+                   [(ngModel)]="campo.valor"
+                   [placeholder]="soloLectura ? '' : '+591 70000000'"
+                   [readonly]="soloLectura" />
+          }
+          @if (campo.tipo === 'EMAIL') {
+            <input class="valor-input" type="email"
+                   [(ngModel)]="campo.valor"
+                   [placeholder]="soloLectura ? '' : 'correo@ejemplo.com'"
+                   [readonly]="soloLectura" />
+          }
+          @if (campo.tipo === 'SELECT') {
+            <select class="dform-select" [(ngModel)]="campo.valor" [disabled]="soloLectura">
+              <option value="" disabled selected>-- Seleccione una opción --</option>
+              @for (opt of getParsedOpciones(campo.opciones); track opt) {
+                <option [value]="opt">{{ opt }}</option>
+              }
+            </select>
+          }
+          @if (campo.tipo === 'CHECKLIST') {
+            <div class="checklist-container">
+              @for (opt of getParsedOpciones(campo.opciones); track opt) {
+                <label class="checklist-item" [class.readonly]="soloLectura">
+                  <input type="checkbox"
+                         [checked]="isItemChecked(campo, opt)"
+                         (change)="toggleItemChecked(campo, opt, $any($event.target).checked)"
+                         [disabled]="soloLectura" />
+                  <span>{{ opt }}</span>
+                </label>
+              }
+              @if (getParsedOpciones(campo.opciones).length === 0) {
+                <span style="font-size: 12px; color: #64748b; font-style: italic;">Sin opciones configuradas.</span>
+              }
+            </div>
+          }
+          @if (campo.tipo === 'TABLA') {
+            <div class="tabla-dinamica-container">
+              @if (getColumns(campo).length === 0) {
+                <div class="tabla-empty-msg">Configura las columnas de la tabla arriba para empezar a agregar filas.</div>
+              } @else {
+                <table class="dform-table">
+                  <thead>
+                    <tr>
+                      @for (col of getColumns(campo); track col) {
+                        <th>{{ col }}</th>
+                      }
+                      @if (!soloLectura) {
+                        <th class="col-accion">Acciones</th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of parsedTables[campo.id] || []; track $index; let rIndex = $index) {
+                      <tr>
+                        @for (col of getColumns(campo); track col) {
+                          <td>
+                            @if (soloLectura) {
+                              <span>{{ row[col] }}</span>
+                            } @else {
+                              <input class="cell-input" [(ngModel)]="row[col]" (ngModelChange)="actualizarValorTabla(campo)" />
+                            }
+                          </td>
+                        }
+                        @if (!soloLectura) {
+                          <td style="text-align: center;">
+                            <button mat-icon-button type="button" color="warn" (click)="eliminarFila(campo, rIndex)">
+                              <mat-icon style="font-size: 18px; width: 18px; height: 18px;">delete</mat-icon>
+                            </button>
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+                @if (!soloLectura) {
+                  <button mat-button type="button" class="btn-add-row" (click)="agregarFila(campo)">
+                    <mat-icon>add</mat-icon> Añadir Fila
+                  </button>
+                }
+              }
+            </div>
+          }
+          @if (campo.tipo === 'ARCHIVO') {
+            @if (!soloLectura) {
+              <label class="archivo-label">
+                <mat-icon>upload_file</mat-icon>
+                {{ campo.archivoNombre || 'Seleccionar archivo' }}
+                <input type="file" class="archivo-input-hidden"
+                       (change)="onArchivoSeleccionado($event, campo)" />
+              </label>
+            } @else {
+              <span class="archivo-nombre-readonly">
+                <mat-icon>attach_file</mat-icon>
+                {{ campo.archivoNombre || campo.valor || 'Sin archivo' }}
+              </span>
+            }
+          }
+        </div>
+
+      </div>
+    }
+  </div>
+
+  <!-- ── Botones de acción ── -->
+  @if (!soloLectura) {
+    <div class="dform-actions">
+      <button mat-stroked-button type="button" (click)="agregarCampo()" id="btn-agregar-campo">
+        <mat-icon>add</mat-icon> Agregar campo
+      </button>
+
+      @if (campos.length > 0) {
+        <button mat-raised-button color="primary" type="button"
+                [disabled]="guardando" (click)="guardar()" id="btn-guardar-formulario">
+          @if (guardando) {
+            <mat-spinner diameter="18"></mat-spinner>
+          } @else {
+            <mat-icon>save</mat-icon>
+          }
+          Guardar formulario
+        </button>
+      }
+    </div>
+
+    @if (guardadoOk) {
+      <div class="dform-ok">
+        <mat-icon>check_circle</mat-icon> Formulario guardado correctamente
+      </div>
+    }
+
+    @if (error) {
+      <div class="dform-error">
+        <mat-icon>error</mat-icon> {{ error }}
+      </div>
+    }
+  }
+
+</div>

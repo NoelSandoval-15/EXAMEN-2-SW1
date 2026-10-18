@@ -1,0 +1,30 @@
+<mat-toolbar class="app-header">
+  <span class="spacer"></span>
+
+  <!-- Botón de cambio de tema Día/Noche -->
+  <button mat-icon-button (click)="themeService.toggleTheme()" class="theme-toggle" title="Cambiar tema">
+    <mat-icon>{{ themeService.isDarkMode ? 'light_mode' : 'dark_mode' }}</mat-icon>
+  </button>
+
+  <button mat-icon-button [routerLink]="'/notificaciones'">
+    @if (unreadCount > 0) {
+      <mat-icon [matBadge]="unreadCount" matBadgeColor="warn">notifications</mat-icon>
+    } @else {
+      <mat-icon>notifications</mat-icon>
+    }
+  </button>
+
+  <button mat-icon-button [matMenuTriggerFor]="userMenu">
+    <mat-icon>account_circle</mat-icon>
+  </button>
+
+  <mat-menu #userMenu="matMenu">
+    <div class="user-info">
+      <strong>{{ authService.getCurrentUser()?.nombre }}</strong>
+      <small>{{ authService.getCurrentUser()?.username }}</small>
+    </div>
+    <button mat-menu-item (click)="logout()">
+      <mat-icon>logout</mat-icon> Cerrar sesión
+    </button>
+  </mat-menu>
+</mat-toolbar>

@@ -1,0 +1,277 @@
+package com.examensw1.backend.modules.workflow.service;
+
+import com.examensw1.backend.modules.workflow.domain.Workflow;
+import com.examensw1.backend.modules.workflow.domain.WorkflowEdge;
+import com.examensw1.backend.modules.workflow.domain.WorkflowNode;
+import com.examensw1.backend.modules.workflow.dto.*;
+import com.examensw1.backend.modules.workflow.repository.WorkflowRepository;
+import com.examensw1.backend.modules.user.repository.UserRepository;
+import com.examensw1.backend.shared.enums.NodeType;
+import com.examensw1.backend.shared.exception.BusinessException;
+import com.examensw1.backend.shared.exception.ResourceNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.camunda.bpm.engine.RepositoryService;
+import org.camunda.bpm.engine.repository.Deployment;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class WorkflowServiceImpl implements WorkflowService {
+
+    private final WorkflowRepository workflowRepository;
+    private final UserRepository userRepository;
+    private final RepositoryService repositoryService;
+    private final BpmnXmlGenerator bpmnXmlGenerator;
+
+    @Override
+    public WorkflowDTO crearTemplate(CreateWorkflowRequest request, String usuarioId) {
+        Workflow workflow = new Workflow();
+        workflow.setNombre(request.getNombre());
+        workflow.setTipoSolicitud(request.getTipoSolicitud());
+        workflow.setFormularioId(request.getFormularioId());
+        workflow.setCreatedBy(usuarioId);
+        workflow.setEstado("BORRADOR");
+        workflow.setBpmnXml(request.getBpmnXml());
+
+        if (request.getNodos() != null) {
+            request.getNodos().forEach(n -> {
+                WorkflowNode node = new WorkflowNode();
+                node.setId(n.getId());
+                node.setNombre(n.getNombre());
+                node.setTipo(n.getTipo());
+                node.setDepartamentoId(n.getDepartamentoId());
+                node.setRolRequerido(n.getRolRequerido());
+                node.setFormularioId(n.getFormularioId());
+                node.setFuncionarioId(n.getFuncionarioId());
+                node.setRequiereEvidencia(n.isRequiereEvidencia());
+                node.setFechaLimite(n.getFechaLimite());
+                node.setOrden(n.getOrden());
+                node.setFormularioDinamicoHabilitado(n.isFormularioDinamicoHabilitado());
+                node.setPermisoDefectoCreador(n.getPermisoDefectoCreador());
+                node.setNivelVisibilidadGlobal(n.getNivelVisibilidadGlobal());
+                node.setBloquearAlCompletar(n.isBloquearAlCompletar());
+                node.setHabilitarFirmaDigital(n.isHabilitarFirmaDigital());
+                node.setFormatosPermitidos(n.getFormatosPermitidos());
+                node.setMatrizPermisosDocumentos(n.getMatrizPermisosDocumentos());
+                workflow.getNodos().add(node);
+            });
+        }
+
+        if (request.getConexiones() != null) {
+            request.getConexiones().forEach(e -> {
+                WorkflowEdge edge = new WorkflowEdge();
+                edge.setId(e.getId());
+                edge.setNodoOrigenId(e.getNodoOrigenId());
+                edge.setNodoDestinoId(e.getNodoDestinoId());
+                edge.setCondicion(e.getCondicion());
+                edge.setEtiqueta(e.getEtiqueta());
+                workflow.getConexiones().add(edge);
+            });
+        }
+
+        return toDTO(workflowRepository.save(workflow));
+    }
+
+    @Override
+    public WorkflowDTO actualizarTemplate(String id, CreateWorkflowRequest request) {
+        Workflow workflow = workflowRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Template", id));
+
+        workflow.setNombre(request.getNombre());
+        workflow.setTipoSolicitud(request.getTipoSolicitud());
+        if (request.getFormularioId() != null) workflow.setFormularioId(request.getFormularioId());
+        if (request.getBpmnXml() != null && !request.getBpmnXml().isBlank()) {
+            workflow.setBpmnXml(request.getBpmnXml());
+        }
+
+        if (request.getNodos() != null && !request.getNodos().isEmpty()) {
+            workflow.getNodos().clear();
+            request.getNodos().forEach(n -> {
+                WorkflowNode node = new WorkflowNode();
+                node.setId(n.getId()); node.setNombre(n.getNombre()); node.setTipo(n.getTipo());
+                node.setDepartamentoId(n.getDepartamentoId()); node.setRolRequerido(n.getRolRequerido());
+                node.setFormularioId(n.getFormularioId()); node.setRequiereEvidencia(n.isRequiereEvidencia());
+                node.setFechaLimite(n.getFechaLimite()); node.setOrden(n.getOrden());
+                node.setFuncionarioId(n.getFuncionarioId());
+                node.setFormularioDinamicoHabilitado(n.isFormularioDinamicoHabilitado());
+                node.setPermisoDefectoCreador(n.getPermisoDefectoCreador());
+                node.setNivelVisibilidadGlobal(n.getNivelVisibilidadGlobal());
+                node.setBloquearAlCompletar(n.isBloquearAlCompletar());
+                node.setHabilitarFirmaDigital(n.isHabilitarFirmaDigital());
+                node.setFormatosPermitidos(n.getFormatosPermitidos());
+                node.setMatrizPermisosDocumentos(n.getMatrizPermisosDocumentos());
+                workflow.getNodos().add(node);
+            });
+        }
+
+        if (request.getConexiones() != null && !request.getConexiones().isEmpty()) {
+            workflow.getConexiones().clear();
+            request.getConexiones().forEach(e -> {
+                WorkflowEdge edge = new WorkflowEdge();
+                edge.setId(e.getId()); edge.setNodoOrigenId(e.getNodoOrigenId());
+                edge.setNodoDestinoId(e.getNodoDestinoId()); edge.setCondicion(e.getCondicion());
+                edge.setEtiqueta(e.getEtiqueta());
+                workflow.getConexiones().add(edge);
+            });
+        }
+
+        // Si el template estaba ACTIVO y cambió el diseño, volver a BORRADOR para re-activar
+        if ("ACTIVO".equals(workflow.getEstado())) {
+            workflow.setEstado("BORRADOR");
+            workflow.setCamundaProcessDefinitionKey(null);
+            workflow.setCamundaDeploymentId(null);
+        }
+
+        return toDTO(workflowRepository.save(workflow));
+    }
+
+    @Override
+    public WorkflowDTO obtenerTemplate(String id) {
+        return toDTO(workflowRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Template", id)));
+    }
+
+    @Override
+    public List<WorkflowDTO> listarTemplates() {
+        return workflowRepository.findAll().stream().map(this::toDTO).toList();
+    }
+
+    @Override
+    public WorkflowDTO activarTemplate(String id) {
+        Workflow workflow = workflowRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Template", id));
+
+        if (workflow.getNodos().isEmpty()) {
+            throw new BusinessException("No se puede activar un template sin nodos");
+        }
+
+        String processKey = bpmnXmlGenerator.sanitizeKey(workflow.getId());
+
+        // Siempre generar BPMN desde el modelo de nodos/conexiones de MongoDB.
+        // El XML de bpmn.js se conserva en BD solo para visualización; puede tener
+        // IDs inconsistentes o namespaces incorrectos que Camunda rechaza al desplegar.
+        String xml = bpmnXmlGenerator.generate(workflow);
+
+        // Desplegar en Camunda
+        try {
+            Deployment deployment = repositoryService.createDeployment()
+                    .name(workflow.getNombre())
+                    .addInputStream(
+                            processKey + ".bpmn",
+                            new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))
+                    )
+                    .enableDuplicateFiltering(false)
+                    .deploy();
+
+            workflow.setCamundaDeploymentId(deployment.getId());
+            workflow.setCamundaProcessDefinitionKey(processKey);
+            log.info("Template '{}' desplegado en Camunda. DeploymentId={}, ProcessKey={}",
+                    workflow.getNombre(), deployment.getId(), processKey);
+        } catch (Exception e) {
+            log.error("Error al desplegar template en Camunda: {}", e.getMessage(), e);
+            throw new BusinessException("Error al desplegar el flujo en el motor: " + e.getMessage());
+        }
+
+        workflow.setEstado("ACTIVO");
+        return toDTO(workflowRepository.save(workflow));
+    }
+
+    @Override
+    public void desactivarTemplate(String id, String usuarioUsername) {
+        // Validar que solo ADMIN puede eliminar flujos
+        var usuario = userRepository.findByUsername(usuarioUsername)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario", usuarioUsername));
+        
+        if (!("ADMIN".equals(usuario.getRolId()))) {
+            throw new BusinessException("Solo administradores pueden eliminar flujos");
+        }
+        
+        Workflow workflow = workflowRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Template", id));
+        workflowRepository.delete(workflow);
+    }
+
+    @Override
+    public SimulationResultDTO simularTemplate(String id) {
+        Workflow workflow = workflowRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Template", id));
+
+        SimulationResultDTO result = new SimulationResultDTO();
+        result.setTemplateId(id);
+        result.setTemplateNombre(workflow.getNombre());
+        result.setTotalNodos(workflow.getNodos().size());
+
+        List<String> errores = new ArrayList<>();
+        List<String> recorrido = new ArrayList<>();
+
+        boolean tieneInicio = workflow.getNodos().stream().anyMatch(n -> NodeType.INICIO.equals(n.getTipo()));
+        boolean tieneFin    = workflow.getNodos().stream().anyMatch(n -> NodeType.FIN.equals(n.getTipo()));
+
+        if (!tieneInicio) errores.add("El flujo no tiene nodo de INICIO");
+        if (!tieneFin)    errores.add("El flujo no tiene nodo de FIN");
+        if (workflow.getNodos().size() < 2) errores.add("El flujo necesita al menos 2 nodos");
+
+        workflow.getNodos().stream()
+                .sorted((a, b) -> Integer.compare(a.getOrden(), b.getOrden()))
+                .forEach(n -> recorrido.add(n.getOrden() + ". " + n.getNombre() + " [" + n.getTipo() + "]"));
+
+        result.setErrores(errores);
+        result.setRecorrido(recorrido);
+        result.setValido(errores.isEmpty());
+        return result;
+    }
+
+    WorkflowDTO toDTO(Workflow w) {
+        WorkflowDTO dto = new WorkflowDTO();
+        dto.setId(w.getId());
+        dto.setNombre(w.getNombre());
+        dto.setTipoSolicitud(w.getTipoSolicitud());
+        dto.setVersion(w.getVersion());
+        dto.setEstado(w.getEstado());
+        dto.setFormularioId(w.getFormularioId());
+        dto.setCreatedBy(w.getCreatedBy());
+        dto.setCreatedAt(w.getCreatedAt());
+        dto.setBpmnXml(w.getBpmnXml());
+        dto.setCamundaProcessDefinitionKey(w.getCamundaProcessDefinitionKey());
+
+        dto.setNodos(w.getNodos().stream().map(n -> {
+            WorkflowNodeDTO nd = new WorkflowNodeDTO();
+            nd.setId(n.getId());
+            nd.setNombre(n.getNombre());
+            nd.setTipo(n.getTipo());
+            nd.setDepartamentoId(n.getDepartamentoId());
+            nd.setRolRequerido(n.getRolRequerido());
+            nd.setFuncionarioId(n.getFuncionarioId());
+            nd.setOrden(n.getOrden());
+            nd.setRequiereEvidencia(n.isRequiereEvidencia());
+            nd.setFechaLimite(n.getFechaLimite());
+            nd.setFormularioDinamicoHabilitado(n.isFormularioDinamicoHabilitado());
+            nd.setPermisoDefectoCreador(n.getPermisoDefectoCreador());
+            nd.setNivelVisibilidadGlobal(n.getNivelVisibilidadGlobal());
+            nd.setBloquearAlCompletar(n.isBloquearAlCompletar());
+            nd.setHabilitarFirmaDigital(n.isHabilitarFirmaDigital());
+            nd.setFormatosPermitidos(n.getFormatosPermitidos());
+            nd.setMatrizPermisosDocumentos(n.getMatrizPermisosDocumentos());
+            return nd;
+        }).toList());
+
+        dto.setConexiones(w.getConexiones().stream().map(e -> {
+            WorkflowEdgeDTO ed = new WorkflowEdgeDTO();
+            ed.setId(e.getId());
+            ed.setNodoOrigenId(e.getNodoOrigenId());
+            ed.setNodoDestinoId(e.getNodoDestinoId());
+            ed.setCondicion(e.getCondicion());
+            ed.setEtiqueta(e.getEtiqueta());
+            return ed;
+        }).toList());
+
+        return dto;
+    }
+}

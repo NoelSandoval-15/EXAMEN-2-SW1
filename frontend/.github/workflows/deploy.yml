@@ -1,0 +1,76 @@
+name: Deploy Angular Frontend to Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  APPLICATION_NAME: frontend-sw1-workflow
+  ENVIRONMENT_NAME: Frontend-sw1-workflow-env
+  S3_BUCKET: elasticbeanstalk-us-east-2-461073513590
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Angular app
+        run: npm run build
+
+      - name: Create Elastic Beanstalk package
+        run: |
+          mkdir deploy-package
+          cp -r dist/flujos-de-trabajo/browser/* deploy-package/
+
+          cat > deploy-package/Dockerfile <<'EOF'
+          FROM nginx:1.27-alpine
+          COPY . /usr/share/nginx/html
+          RUN echo 'server { listen 80; server_name localhost; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+          EXPOSE 80
+          CMD ["nginx", "-g", "daemon off;"]
+          EOF
+
+          cd deploy-package
+          zip -r ../deploy.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload package to S3
+        run: |
+          VERSION_LABEL="frontend-${GITHUB_SHA}"
+          echo "VERSION_LABEL=$VERSION_LABEL" >> $GITHUB_ENV
+          aws s3 cp deploy.zip s3://${{ env.S3_BUCKET }}/frontend-sw1-workflow/${VERSION_LABEL}.zip
+
+      - name: Create Elastic Beanstalk application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "${{ env.APPLICATION_NAME }}" \
+            --version-label "${VERSION_LABEL}" \
+            --source-bundle S3Bucket="${{ env.S3_BUCKET }}",S3Key="frontend-sw1-workflow/${VERSION_LABEL}.zip"
+
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "${{ env.ENVIRONMENT_NAME }}" \
+            --version-label "${VERSION_LABEL}"

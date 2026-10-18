@@ -1,0 +1,56 @@
+name: Deploy Spring Boot Docker to Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  APPLICATION_NAME: backend-sw1-workflow
+  ENVIRONMENT_NAME: Backend-sw1-workflow-env
+  S3_BUCKET: elasticbeanstalk-us-east-2-461073513590
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker build
+        run: docker build -t backend-sw1-workflow .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create deployment package
+        run: |
+          VERSION_LABEL="backend-${GITHUB_SHA}"
+          echo "VERSION_LABEL=$VERSION_LABEL" >> $GITHUB_ENV
+          git archive --format=zip --output=deploy.zip HEAD
+
+      - name: Upload package to S3
+        run: |
+          aws s3 cp deploy.zip s3://${{ env.S3_BUCKET }}/backend-sw1-workflow/${VERSION_LABEL}.zip
+
+      - name: Create Elastic Beanstalk application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "${{ env.APPLICATION_NAME }}" \
+            --version-label "${VERSION_LABEL}" \
+            --source-bundle S3Bucket="${{ env.S3_BUCKET }}",S3Key="backend-sw1-workflow/${VERSION_LABEL}.zip"
+
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "${{ env.ENVIRONMENT_NAME }}" \
+            --version-label "${VERSION_LABEL}"

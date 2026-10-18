@@ -1,0 +1,59 @@
+# Ambientes virtuales
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependencias
+node_modules/
+
+# Compilación
+target/
+dist/
+build/
+*.class
+*.jar
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Cachés
+.gradle/
+.m2/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Documentación local y apuntes del usuario
+/docs/
+/*.txt
+/*.md
+/*.js
+
+# Mobile app directory ignored
+movil/
+
+# Local properties with secrets ignored
+backend/src/main/resources/application-local.properties
+.vscode/launch.json
+
+
+# Evitar subir credenciales locales de AWS
+**/resources/application-local.properties
+
+# Evitar subir archivos subidos de prueba
+uploads/
+
+# Evitar subir logs temporales de compilación
+*.log
