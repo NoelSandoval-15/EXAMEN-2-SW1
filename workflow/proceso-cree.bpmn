@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+  id="Definitions_CREE_Workflow"
+  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="ProcesoCREE" name="Proceso CREE por Departamentos" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_Solicitud" name="Solicitud recibida">
+      <bpmn:outgoing>Flow_01</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:userTask id="Task_Recepcion" name="Recepción registra solicitud">
+      <bpmn:incoming>Flow_01</bpmn:incoming>
+      <bpmn:outgoing>Flow_02</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_RRHH" name="RRHH valida datos">
+      <bpmn:incoming>Flow_02</bpmn:incoming>
+      <bpmn:outgoing>Flow_03</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_Finanzas" name="Finanzas evalúa presupuesto">
+      <bpmn:incoming>Flow_03</bpmn:incoming>
+      <bpmn:outgoing>Flow_04</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_Presupuesto" name="¿Presupuesto aprobado?">
+      <bpmn:incoming>Flow_04</bpmn:incoming>
+      <bpmn:outgoing>Flow_05A</bpmn:outgoing>
+      <bpmn:outgoing>Flow_05B</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="Task_TI_Automatiza" name="TI automatiza aprovisionamiento"
+      camunda:delegateExpression="${automatizacionTI}">
+      <bpmn:incoming>Flow_05A</bpmn:incoming>
+      <bpmn:outgoing>Flow_06</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:userTask id="Task_Gerencia" name="Gerencia aprueba cierre">
+      <bpmn:incoming>Flow_06</bpmn:incoming>
+      <bpmn:outgoing>Flow_07</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="Gateway_AprobacionFinal" name="¿Aprobación final?">
+      <bpmn:incoming>Flow_07</bpmn:incoming>
+      <bpmn:outgoing>Flow_08A</bpmn:outgoing>
+      <bpmn:outgoing>Flow_08B</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="Task_NotificarAprobado" name="Notificación automática de aprobación"
+      camunda:delegateExpression="${notificarAprobacion}">
+      <bpmn:incoming>Flow_08A</bpmn:incoming>
+      <bpmn:outgoing>Flow_09A</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="Task_NotificarRechazo" name="Notificación automática de rechazo"
+      camunda:delegateExpression="${notificarRechazo}">
+      <bpmn:incoming>Flow_05B</bpmn:incoming>
+      <bpmn:incoming>Flow_08B</bpmn:incoming>
+      <bpmn:outgoing>Flow_09B</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Aprobado" name="Proceso finalizado (aprobado)">
+      <bpmn:incoming>Flow_09A</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:endEvent id="EndEvent_Rechazado" name="Proceso finalizado (rechazado)">
+      <bpmn:incoming>Flow_09B</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_01" sourceRef="StartEvent_Solicitud" targetRef="Task_Recepcion" />
+    <bpmn:sequenceFlow id="Flow_02" sourceRef="Task_Recepcion" targetRef="Task_RRHH" />
+    <bpmn:sequenceFlow id="Flow_03" sourceRef="Task_RRHH" targetRef="Task_Finanzas" />
+    <bpmn:sequenceFlow id="Flow_04" sourceRef="Task_Finanzas" targetRef="Gateway_Presupuesto" />
+    <bpmn:sequenceFlow id="Flow_05A" sourceRef="Gateway_Presupuesto" targetRef="Task_TI_Automatiza">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${presupuestoAprobado == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_05B" sourceRef="Gateway_Presupuesto" targetRef="Task_NotificarRechazo">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${presupuestoAprobado == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_06" sourceRef="Task_TI_Automatiza" targetRef="Task_Gerencia" />
+    <bpmn:sequenceFlow id="Flow_07" sourceRef="Task_Gerencia" targetRef="Gateway_AprobacionFinal" />
+    <bpmn:sequenceFlow id="Flow_08A" sourceRef="Gateway_AprobacionFinal" targetRef="Task_NotificarAprobado">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${aprobacionFinal == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_08B" sourceRef="Gateway_AprobacionFinal" targetRef="Task_NotificarRechazo">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${aprobacionFinal == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_09A" sourceRef="Task_NotificarAprobado" targetRef="EndEvent_Aprobado" />
+    <bpmn:sequenceFlow id="Flow_09B" sourceRef="Task_NotificarRechazo" targetRef="EndEvent_Rechazado" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_ProcesoCREE">
+    <bpmndi:BPMNPlane id="BPMNPlane_ProcesoCREE" bpmnElement="ProcesoCREE" />
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
